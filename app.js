@@ -59,7 +59,9 @@ function getSaved(kind) {
   } catch { return null; }
 }
 function save() {
+  if (project.source === 'offline' && window.queueDiskSave) { window.queueDiskSave(project); return; }
   try {
+    localStorage.removeItem(`${STORAGE}.diskCurrent`);
     localStorage.setItem(`${STORAGE}.${project.kind}`, JSON.stringify(project));
     localStorage.setItem(`${STORAGE}.current`, project.kind);
     storageOk = true;
@@ -107,7 +109,7 @@ function renderShots() {
   $('emptyShots').hidden = rows.length > 0;
   if (!rows.length) $('emptyShots').innerHTML = pendingOnly
     ? `<h3>没有待核实的分镜</h3><p>可以返回全部分镜，继续校对画面和文案。</p><button class="button secondary" data-action="show-all">查看全部分镜</button>`
-    : `<h3>从第一个镜头开始</h3><p>${videoReady ? '视频已就绪。当前原型支持手动建表；' : '可以先整理分镜，原片需重新选择。'}<br>AI 自动拆解将在接入分析服务后开放。</p><button class="button primary" data-action="add-shot">${icon('plus')}创建第一个分镜</button>`;
+    : `<h3>从第一个镜头开始</h3><p>${videoReady ? '视频已就绪。可以手动补充分镜。' : '可以先整理分镜，原片需重新选择。'}<br>也可以导入一条视频，自动生成分镜与口播。</p><button class="button primary" data-action="add-shot">${icon('plus')}创建第一个分镜</button>`;
   counts(); requestAnimationFrame(resizeEditors);
 }
 function renderTranscript() {
@@ -115,7 +117,7 @@ function renderTranscript() {
   requestAnimationFrame(resizeEditors);
 }
 function renderStructure() {
-  $('structureBlocks').innerHTML = project.structures.length ? project.structures.map((s, i) => `<article class="structure-card"><span class="structure-number">${String(i + 1).padStart(2, '0')}</span><div><header><h3>${escapeHtml(s.title)}</h3><span class="pill soft">${escapeHtml(s.role)}</span></header><textarea class="cell-editor" data-structure="${escapeHtml(s.id)}" aria-label="内容结构 ${i + 1} 分析">${escapeHtml(s.analysis)}</textarea><button class="time-link" data-content-seek="${s.start}">${formatTime(s.start)}–${formatTime(s.end)}</button></div></article>`).join('') : '<div class="empty-state"><h3>内容结构等待分析</h3><p>当前本地草稿没有 AI 分析结果。<br>示例项目可体验与分镜独立的内容分段。</p></div>';
+  $('structureBlocks').innerHTML = project.structures.length ? project.structures.map((s, i) => `<article class="structure-card"><span class="structure-number">${String(i + 1).padStart(2, '0')}</span><div><header><h3>${escapeHtml(s.title)}</h3><span class="pill soft">${escapeHtml(s.role)}</span></header><textarea class="cell-editor" data-structure="${escapeHtml(s.id)}" aria-label="内容结构 ${i + 1} 分析">${escapeHtml(s.analysis)}</textarea><button class="time-link" data-content-seek="${s.start}">${formatTime(s.start)}–${formatTime(s.end)}</button></div></article>`).join('') : '<div class="empty-state"><h3>本版专注分镜与口播</h3><p>基础版已提取分镜与口播，不生成结构分析。<br>可在分镜详情里手动填写内容作用。</p></div>';
   $('panel-structure').querySelector('.structure-bottom').hidden = project.kind !== 'demo';
   requestAnimationFrame(resizeEditors);
 }
@@ -135,8 +137,8 @@ function renderProject() {
   $('fileName').textContent = project.fileName;
   $('fileMeta').textContent = project.kind === 'demo' ? '00:36 · 原创插画演示片 · 无音频' : `${formatTime(project.duration)} · 本地读取 · ${videoReady ? '原片已载入' : '请重新选择原片'}`;
   $('videoCategory').textContent = project.kind === 'demo' ? '生活方式' : '本地视频';
-  $('demoNotice').innerHTML = `<span class="notice-symbol">i</span><span>${project.kind === 'demo' ? '当前为演示数据，用于体验校对流程；不代表 AI 实际识别结果。' : '当前为手动拆解草稿。AI 自动分析尚未接入，视频仅在本地读取。'}</span>`;
-  $('analysisStep').innerHTML = project.kind === 'demo' ? `<span class="step-number">${icon('check')}</span><span>生成拆解初稿</span>` : '<span class="step-number">2</span><span>手动整理初稿</span>';
+  $('demoNotice').innerHTML = `<span class="notice-symbol">i</span><span>${project.kind === 'demo' ? '当前为演示数据，用于体验校对流程；不代表 AI 实际识别结果。' : project.source === 'offline' ? '本地自动拆解初稿：分镜和口播需校对；画面描述、屏幕文字可手动填写。' + (project.warnings?.length ? ' ' + escapeHtml(project.warnings.join(' ')) : '') : '手动拆解草稿。导入视频可自动生成分镜与语音文案。'}</span>`;
+  $('analysisStep').innerHTML = project.kind === 'demo' ? `<span class="step-number">${icon('check')}</span><span>生成拆解初稿</span>` : '<span class="step-number">2</span><span>拆解初稿</span>';
   $('videoUnavailable').hidden = videoReady;
   $('pendingFilter').setAttribute('aria-pressed', String(pendingOnly));
   setTab(tab); counts();
@@ -153,6 +155,7 @@ function showSample() {
 }
 function resumeDraft() {
   const draft = getSaved('local');
+  if (draft?.source === 'offline' && window.openDiskProject) { window.openDiskProject(draft.id); return; }
   if (!draft) { toast('此浏览器中还没有本地视频草稿'); return; }
   save(); project = draft; selectedId = project.shots[0]?.id; pendingOnly = false;
   videoReady = false; video.removeAttribute('src'); video.removeAttribute('poster'); video.load();
@@ -222,6 +225,7 @@ $('editForm').addEventListener('submit', (event) => {
 
 async function loadVideo(file) {
   if (!file || uploadBusy) return;
+  if (!relinking && window.stageLocalVideo) { window.stageLocalVideo(file); return; }
   const fail = (message) => { $('uploadError').textContent = message; $('uploadError').hidden = false; if (!$('uploadDialog').open) toast(message); };
   if (!/\.(mp4|mov|webm)$/i.test(file.name)) { fail('请选择 MP4、MOV 或 WebM 视频文件。'); return; }
   if (!file.size || file.size > 200 * 1024 * 1024) { fail('请选择非空且不超过 200 MB 的视频。'); return; }
@@ -260,13 +264,13 @@ zone.addEventListener('drop', e => { relinking = false; if (e.dataTransfer.files
 
 function transcript() { return project.shots.map(s => s.speech).filter(Boolean).join('\n\n'); }
 const exportHeaders = ['镜头编号', '开始时间', '结束时间', '时间为约值', '画面与动作', '拍摄信息', '口播原文', '屏幕文字', '内容作用（分析判断）', '待核实项', '校对状态', '数据来源'];
-function exportRows() { return project.shots.map((s, i) => [i + 1, formatTime(s.start, true), formatTime(s.end, true), s.approximate ? '是' : '否', s.visual, s.camera, s.speech, s.screen, s.analysis || '', s.uncertainty, s.reviewed ? '已校对' : '未校对', project.kind === 'demo' ? '演示数据，非 AI 实测' : '用户手动整理']); }
+function exportRows() { return project.shots.map((s, i) => [i + 1, formatTime(s.start, true), formatTime(s.end, true), s.approximate ? '是' : '否', s.visual, s.camera, s.speech, s.screen, s.analysis || '', s.uncertainty, s.reviewed ? '已校对' : '未校对', project.kind === 'demo' ? '演示数据，非 AI 实测' : project.source === 'offline' ? '本地模型转写与自动分镜，人工可校对' : '用户手动整理']); }
 function formulaSafe(value) { const text = String(value ?? ''); return /^[\s]*[=+@-]/.test(text) ? "'" + text : text; }
 function toDelimited(delimiter, quoted) { return [exportHeaders, ...exportRows()].map(row => row.map(value => { const safe = formulaSafe(value); return quoted ? '"' + safe.replace(/"/g, '""') + '"' : safe.replace(/[\t\r\n]+/g, ' '); }).join(delimiter)).join('\r\n'); }
 function markdown() {
   const md = v => String(v ?? '').replace(/\\/g, '\\\\').replace(/\|/g, '\\|').replace(/\r?\n/g, '<br>');
-  const label = project.kind === 'demo' ? '演示数据，用于体验校对流程；非 AI 实际识别结果。示例片为原创插画，无音频，文案为虚构。' : '用户手动整理的本地草稿，未使用 AI 分析服务。';
-  return `# ${project.title}\n\n> ${label}\n\n## 分镜脚本\n\n| ${exportHeaders.join(' | ')} |\n| ${exportHeaders.map(() => '---').join(' | ')} |\n${exportRows().map(row => '| ' + row.map(md).join(' | ') + ' |').join('\n')}\n\n## 完整口播\n\n${transcript() || '暂无口播文案。'}\n\n## 内容结构（分析判断）\n\n${project.structures.map(s => `### ${s.title} · ${formatTime(s.start)}–${formatTime(s.end)}\n\n${s.analysis}`).join('\n\n') || '暂无分析。'}\n\n---\n导出自「拆一条」V0.1。镜头截图未嵌入本文件。\n`;
+  const label = project.kind === 'demo' ? '演示数据，用于体验校对流程；非 AI 实际识别结果。示例片为原创插画，无音频，文案为虚构。' : project.source === 'offline' ? '本地模型转写与自动分镜，可人工校对；画面描述和屏幕文字为手动记录。' : '用户手动整理的本地草稿，未使用 AI 分析服务。';
+  return `# ${project.title}\n\n> ${label}\n\n## 分镜脚本\n\n| ${exportHeaders.join(' | ')} |\n| ${exportHeaders.map(() => '---').join(' | ')} |\n${exportRows().map(row => '| ' + row.map(md).join(' | ') + ' |').join('\n')}\n\n## 完整口播\n\n${transcript() || '暂无口播文案。'}\n\n## 内容结构（分析判断）\n\n${project.structures.map(s => `### ${s.title} · ${formatTime(s.start)}–${formatTime(s.end)}\n\n${s.analysis}`).join('\n\n') || '暂无分析。'}\n\n---\n导出自「拆一条」V0.2 本地基础版。镜头截图未嵌入本文件。\n`;
 }
 async function copyText(text, success) {
   try { await navigator.clipboard.writeText(text); toast(success); return true; }
@@ -274,13 +278,14 @@ async function copyText(text, success) {
 }
 async function exportProject(format) {
   if (!project.shots.length) { toast('先添加一个分镜，再导出你的拆解'); return; }
+  if (window.exportLocalFormat?.(format)) return;
   if (format === 'clipboard') { if (await copyText(toDelimited('\t', false), '已复制分镜表，可直接粘贴到表格')) $('exportDialog').close(); return; }
   const pending = project.shots.filter(isPending).length;
   let content, type;
   if (format === 'csv') { content = '\uFEFF' + toDelimited(',', true); type = 'text/csv;charset=utf-8'; }
   if (format === 'md') { content = markdown(); type = 'text/markdown;charset=utf-8'; }
   if (format === 'txt') {
-    const labels = project.kind === 'demo' ? '【演示文案，非 AI 实测；示例片无音频】\n\n' : '【用户手动整理口播】\n\n';
+    const labels = project.kind === 'demo' ? '【演示文案，非 AI 实测；示例片无音频】\n\n' : project.source === 'offline' ? '【本地语音转写口播，请对照校对】\n\n' : '【用户手动整理口播】\n\n';
     content = labels + project.shots.map(s => `${range(s)}${isPending(s) ? ' 【待核实：' + s.uncertainty + '】' : ''}\n${s.speech || '（无口播）'}`).join('\n\n'); type = 'text/plain;charset=utf-8';
   }
   const url = URL.createObjectURL(new Blob([content], { type }));

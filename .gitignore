@@ -8,3 +8,7 @@ output/
 .codex/
 uploads/
 tmp/
+.venv/
+.local-data/
+models/
+__pycache__/

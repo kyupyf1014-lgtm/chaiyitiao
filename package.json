@@ -1,8 +1,13 @@
 {
-  "name": "chaiyitiao-prototype",
-  "version": "0.1.0",
+  "name": "chaiyitiao-local",
+  "version": "0.2.0",
   "license": "MIT",
   "private": true,
-  "description": "拆一条 · AI 短视频拆解工具第一版交互原型",
-  "scripts": { "dev": "node server.mjs", "start": "node server.mjs", "check": "node --check app.js && node --check server.mjs" }
+  "description": "拆一条 · 完全本地的短视频分镜与语音文案工具",
+  "scripts": {
+    "dev": ".venv/bin/python local_server.py --port 4174",
+    "start": ".venv/bin/python local_server.py --port 4174",
+    "check": "node --check app.js && node --check local-ui.js && .venv/bin/python -m unittest discover -s tests -v",
+    "preview": "node server.mjs"
+  }
 }
