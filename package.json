@@ -1,0 +1,8 @@
+{
+  "name": "chaiyitiao-prototype",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "拆一条 · AI 短视频拆解工具第一版交互原型",
+  "scripts": { "dev": "node server.mjs", "start": "node server.mjs", "check": "node --check app.js && node --check server.mjs" }
+}
